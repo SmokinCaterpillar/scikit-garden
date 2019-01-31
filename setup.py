@@ -1,9 +1,10 @@
 #! /usr/bin/env python
 
 from distutils.version import LooseVersion
+from distutils.command.build import build as build_orig
+
 import os
 
-import numpy as np
 from setuptools import Extension, find_packages, setup
 
 
@@ -41,11 +42,23 @@ for name in ['_tree', '_splitter', '_criterion', '_utils']:
     extensions.append(Extension(
         'skgarden.mondrian.tree.{}'.format(name),
         sources=['skgarden/mondrian/tree/{}.pyx'.format(name)],
-        include_dirs=[np.get_include()],
         libraries=libraries,
         extra_compile_args=['-O3'],
     ))
-extensions = cythonize(extensions)
+
+
+class build(build_orig):
+    # moves numpy import and cython conversion inside the setup call
+    # inspired by: https://stackoverflow.com/questions/54117786/add-numpy-get-include-argument-to-setuptools-without-preinstalled-numpy
+    def finalize_options(self):
+        super().finalize_options()
+        __builtins__.__NUMPY_SETUP__ = False
+        # Numpy is imported on demand inside setup
+        import numpy
+        for extension in self.distribution.ext_modules:
+            extension.include_dirs.append(numpy.get_include())
+        self.distribution.ext_modules = cythonize(
+            self.distribution.ext_modules)
 
 
 if __name__ == "__main__":
@@ -73,5 +86,6 @@ if __name__ == "__main__":
               'Operating System :: MacOS'
             ],
           install_requires=["numpy", "scipy", "scikit-learn>=0.18", "cython"],
-          setup_requires=["cython"],
-          ext_modules=extensions)
+          setup_requires=["cython", "numpy"],
+          ext_modules=extensions,
+          cmdclass={'build': build})
